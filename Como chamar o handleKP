@@ -1,0 +1,7 @@
+
+1. import .py 
+2. Create a object from the class KeypointList, calling in the constructor the following string for get the files with keypoints: abspath(complete path), subpath (the variation of the scene), imagetype.algorithm (HDR, LDR and the used algorithm)
+	for example: abspath = '~/bla/dataset/2D/distance/', subpath = 100, imagetype.algorithm = HDR.surf
+
+
+
