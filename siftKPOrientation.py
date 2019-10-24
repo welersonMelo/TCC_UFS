@@ -36,14 +36,14 @@ def calcOrientation(img, kp):
             x = kp.x + j
             if isOut(img, x, 1):
                 continue
-            dx = img[y, x+1] - img[y, x-1]
-            dy = img[y+1, x] - img[y-1, x]
+            dx = int(img[y, x+1]) - int(img[y, x-1])
+            dy = int(img[y+1, x]) - int(img[y-1, x])
 
             mag = np.sqrt(dx*dx + dy*dy)
             
             orientation = (np.arctan2(dy, dx)+np.pi) * 180/np.pi
             
-            hist[int(orientation/10)] += (kernel[i, j] * mag)
+            hist[int(np.floor(orientation)/10)-1] += (kernel[i, j] * mag)
         
         maxBin = [np.argmax(hist)]
         maxBinVal = hist[maxBin[0]]
@@ -59,7 +59,7 @@ def calcOrientation(img, kp):
 
 ##### main #####
 # Ex call:
-#python3 siftKPOrientation.py ../TestImages/home.jpg /home/welerson/Área de Trabalho/TCC/Implementações/TestImages/ home.dog
+#python3 siftKPOrientation.py ../TestImages/100.jpg /home/welerson/Área\ de\ Trabalho/Pesquisa\ /dataset/2D/distance/100/ 100.LDR.surf
 imgPath = sys.argv[1]
 path = sys.argv[2] 
 fileName = sys.argv[3]
@@ -102,6 +102,6 @@ for newKp in auxList:
 
 #cv2.imwrite('kpOrientation.jpg', img)
 
-with open('keypoints.'+fileName+'.txt', 'w') as f:
+with open(fileName+'.kp.txt', 'w') as f:
     for item in keypoints.List:
         f.write(str(item.x)+' '+str(item.y)+' '+str(item.scale)+' '+str(item.dir)+'\n')
