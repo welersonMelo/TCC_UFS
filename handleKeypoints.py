@@ -1,17 +1,19 @@
 class KeyPoint:
-    def __init__(self, x, y, dir):
+    def __init__(self, x, y, scale, dir):
         self.x = x
         self.y = y
         self.dir = dir
+        self.scale = scale
 
     def setDir(self, dir):
         self.dir = dir
 
 class KeyPointList:
-    ## Make sure that absPath ends with '/' and subpath does not 
-    def __init__(self, absPath, subpath, typeNAlg):
+    ## Make sure that absPath ends with '/' 
+    # Add keypoint scale if it exist in file 
+    def __init__(self, absPath, fileName):
         auxList = []
-        completePath = absPath+subpath + "/" + subpath + "." + typeNAlg
+        completePath = absPath + fileName
         
         first = True
         f = open(completePath + "1.txt", "r")
@@ -22,7 +24,7 @@ class KeyPointList:
             
             y, x, v = line.split()
 
-            kp = KeyPoint(int(x), int(y), 0)
+            kp = KeyPoint(int(x), int(y), 1, 0)
             auxList.append(kp)
         f.close()
 
@@ -35,7 +37,7 @@ class KeyPointList:
             
             y, x, v = line.split()
 
-            kp = KeyPoint(int(x), int(y), 0)
+            kp = KeyPoint(int(x), int(y), 1, 0)
             auxList.append(kp)
         f.close()
 
@@ -48,7 +50,7 @@ class KeyPointList:
             
             y, x, v = line.split()
 
-            kp = KeyPoint(int(x), int(y), 0)
+            kp = KeyPoint(int(x), int(y), 1 ,0)
             auxList.append(kp)
         f.close()
 
