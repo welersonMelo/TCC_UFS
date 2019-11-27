@@ -47,6 +47,10 @@ def calcOrientation(img, kp):
         
         maxBin = [np.argmax(hist)]
         maxBinVal = hist[maxBin[0]]
+
+        if maxBinVal == 0:
+            return maxBin
+
         # checking if exist other valeus above 80% of the max
         for k in range(len(hist)):
             if k == maxBin[0]:
@@ -59,7 +63,7 @@ def calcOrientation(img, kp):
 
 ##### main #####
 # Ex call:
-#python3 siftKPOrientation.py ../TestImages/100.jpg /home/welerson/Área\ de\ Trabalho/Pesquisa\ /dataset/2D/distance/100/ 100.LDR.surf
+# python siftKPOrientation.py ../TestImages/dirtest.jpg ../TestImages/dirtest.manual
 imgPath = sys.argv[1]
 path = sys.argv[2] 
 fileName = sys.argv[3]
@@ -70,6 +74,7 @@ fileName = sys.argv[3]
 
 # read image and passing to gray scale
 img = cv2.imread(imgPath, cv2.IMREAD_UNCHANGED)
+imgCopy = img[:]
 img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
 # gaussian filter input img
@@ -88,7 +93,7 @@ for kp in keypoints.List:
     py = int(30*(np.sin(np.radians(kp.dir*10))))
     
     #print (kp.dir*10, ':', (kp.x + px, kp.y + py), (kp.x, kp.y))
-    cv2.arrowedLine(img, (kp.x, kp.y), (kp.x + px, kp.y + py), (0, 0, 255), 1)
+    cv2.arrowedLine(imgCopy, (kp.x, kp.y), (kp.x + px, kp.y + py), (0, 0, 255), 1)
     
     directions.pop(0)
     if len(directions) > 0:
@@ -100,7 +105,7 @@ for kp in keypoints.List:
 for newKp in auxList:
     keypoints.List.append(newKp)
 
-#cv2.imwrite('kpOrientation.jpg', img)
+cv2.imwrite('kpOrientation.jpg', imgCopy)
 
 with open(fileName+'.kp.txt', 'w') as f:
     for item in keypoints.List:
