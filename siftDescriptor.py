@@ -18,9 +18,9 @@ featVectorList = []
 def rotateP(o, x, y, ox, oy, ansA):
     ans = 0
     if ansA == 0:
-        ans = x * math.cos(o) - y * math.sin(o) + ox
+        ans = (x * math.cos(o) - y * math.sin(o)) + ox
     else:
-        ans = x * math.sin(o) + y * math.cos(o) + oy
+        ans = (x * math.sin(o) + y * math.cos(o)) + oy
 
     return int(round(ans))
 
@@ -68,6 +68,7 @@ for kp in kpList:
     i = 0
     kpDir = kp.dir*10
     theta = kpDir * np.pi/180.0
+
     for h in range(-radius, radius):
         y = kp.y + h
         oy = y - kp.y
@@ -76,14 +77,13 @@ for kp in kpList:
             x = kp.x + w
             ox = x - kp.x
 
-            # rotating KP mask
+            # rotating KP mask 6% of error in rotated mask
             xR = rotateP(theta, ox, oy, kp.x, kp.y, 0)
             yR = rotateP(theta, ox, oy, kp.x, kp.y, 1)
             xA1 = rotateP(theta, ox+1, oy, kp.x, kp.y, 0)
             xS1 = rotateP(theta, ox-1, oy, kp.x, kp.y, 0)
             yA1 = rotateP(theta, ox, oy+1, kp.x, kp.y, 1)
             yS1 = rotateP(theta, ox, oy-1, kp.x, kp.y, 1)
-            
 
             if isOut(img, xR, yR):
                 continue
@@ -117,7 +117,7 @@ for kp in kpList:
     
             j = j+1
         i = i+1
-            
+    
     featVector = np.zeros(bins * windowSize, dtype=np.float32)        
     hist = np.array(hist)
     featVector[:] = hist.flatten()
@@ -128,6 +128,10 @@ for kp in kpList:
 
     featVectorList.append(featVector)
 
-#print(featVectorList)
+ind = imgPath.rfind('/') + 1
+fileName = imgPath[ind:]
+with open(fileName+'.feats', 'w') as f:
+    for vec in featVectorList:
+        f.write(str(vec)+"\n")
 
 print ("fim")
