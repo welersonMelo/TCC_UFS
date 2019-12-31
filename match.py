@@ -3,6 +3,7 @@ import cv2
 import numpy as np
 import math
 from scipy.spatial import distance
+from numpy import linalg as LA
 
 def readFromFile(filePath):
     listAux = []
@@ -24,8 +25,11 @@ def calcDistHamming(vecRef, vecQ):
 #####################################################
 ### How to call    agrs: 1-Filepath to the first image(ref); 2-Filepath to the second image(Query); 3-is a Binary Descriptor:1 or 0; 
 # python3 match.py ../TestImages/imagename.jpg.feats ../TestImages/imagename2.jpg.feats 0 
-##### main #####
 #####################################################
+
+####################
+####### main #######
+####################
 
 filePath1 = sys.argv[1]
 filePath2 = sys.argv[2]
@@ -50,7 +54,7 @@ featVecListRef = readFromFile(filePath1)
 featVecListQ = readFromFile(filePath2)
 
 # Threshold to match
-threshold = 1.1
+threshold = 0.8
 
 # Matched Descriptors
 matchedDesc = []
@@ -72,7 +76,7 @@ for vecRef in featVecListRef:
     dBM2 = distList[idSmallest2]
 
     # Comparing threshold and saving the match
-    ratio = 1.0*dBM1/dBM2
+    ratio = 1.0*dBM1/max(1e-6, dBM2)
     if ratio < threshold:
         # Saving matched reference x,y point and query x,y point sequentialy in each vector position
         matchedDesc.append([vecRef[0], vecRef[1], featVecListQ[idSmallest1][0], featVecListQ[idSmallest1][1]])
@@ -86,13 +90,24 @@ if len(sys.argv) == 6:
     imgPath2 = sys.argv[5]
     img1 = cv2.imread(imgPath1, cv2.IMREAD_UNCHANGED)
     img2 = cv2.imread(imgPath2, cv2.IMREAD_UNCHANGED)
-    h, w, ch = img1.shape
-    h2, w2, ch2 = img2.shape
-    vis = np.zeros((max(h, h2), w+w2,3), np.uint8)
-    vis[:h, :w,:3] = img1
-    vis[:h2, w:w+w2,:3] = img2
+    h = img1.shape[0]
+    w = img1.shape[1]
+    
+    h2 = img2.shape[0]
+    w2 = img2.shape[1]
+    
+    if len(img1.shape) == 2:
+        vis = np.zeros((max(h, h2), w+w2), np.uint8)
+        vis[:h, :w] = img1
+        vis[:h2, w:w+w2] = img2
 
-    cv2.line(vis, (w, 0), (w, h), (50,50,50), 1)
+        cv2.line(vis, (w, 0), (w, h), 50, 1)
+    else:
+        vis = np.zeros((max(h, h2), w+w2, 3), np.uint8)
+        vis[:h, :w, :3] = img1
+        vis[:h2, w:w+w2, :3] = img2
+
+        cv2.line(vis, (w, 0), (w, h), (50,50,50), 1)
 
     for points in matchedDesc:
         x1, y1 = int(points[0]), int(points[1])
@@ -101,5 +116,3 @@ if len(sys.argv) == 6:
         cv2.line(vis, (x1, y1), (x2, y2), (0,255,0), 1)
 
     cv2.imwrite('descriptorResult.png', vis)
-        
-    

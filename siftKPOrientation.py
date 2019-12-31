@@ -3,17 +3,35 @@ import sys
 import cv2
 import numpy as np
 import math
+from numpy import linalg as LA
+from utils import gaussian_filter, cart_to_polar_grad, get_grad, quantize_orientation
 
 # consts values
 bins = 36
 sigma_c = 1.5
-radius_c = 3 * sigma_c
 
-def gaussianKernel(sigma, h):
-    base = np.ones((h, h, 1))
-    kernel = cv2.getGaussianKernel(h, sigma)
-    kernel = np.dot(kernel, kernel.transpose())
-    return kernel
+def fit_parabola(hist, binno, bin_width):
+    centerval = binno*bin_width + bin_width/2.
+
+    if binno == len(hist)-1: rightval = 360 + bin_width/2.
+    else: rightval = (binno+1)*bin_width + bin_width/2.
+
+    if binno == 0: leftval = -bin_width/2.
+    else: leftval = (binno-1)*bin_width + bin_width/2.
+    
+    A = np.array([
+        [centerval**2, centerval, 1],
+        [rightval**2, rightval, 1],
+        [leftval**2, leftval, 1]])
+    b = np.array([
+        hist[binno],
+        hist[(binno+1)%len(hist)], 
+        hist[(binno-1)%len(hist)]])
+
+    x = LA.lstsq(A, b, rcond=None)[0]
+    if x[0] == 0: x[0] = 1e-6
+    return -x[1]/(2*x[0])
+
 
 # checking if is out of bounds for gradient calc
 def isOut(img, x, y):
@@ -22,11 +40,12 @@ def isOut(img, x, y):
 
 ### function that gets the orientation of a passed KP of Keypoint type
 def calcOrientation(img, kp):
+    auxList = []
     sigma = sigma_c * kp.scale
-    radius = int(radius_c * kp.scale)
+    radius = int(2*np.ceil(sigma)+1)
     hist = np.zeros(bins, dtype=np.float32) 
 
-    kernel = gaussianKernel(sigma, radius*2+1)
+    kernel = gaussian_filter(sigma)
 
     for i in range(-radius, radius+1):
         y = kp.y + i
@@ -36,29 +55,28 @@ def calcOrientation(img, kp):
             x = kp.x + j
             if isOut(img, x, 1):
                 continue
-            dx = int(img[y, x+1]) - int(img[y, x-1])
-            dy = int(img[y+1, x]) - int(img[y-1, x])
 
-            mag = np.sqrt(dx*dx + dy*dy)
+            mag, theta = get_grad(img, x, y)            
+            weight = kernel[i+radius, j+radius] * mag
             
-            orientation = (np.arctan2(dy, dx)+np.pi) * 180/np.pi
-            
-            hist[int(np.floor(orientation)/10)-1] += (kernel[i, j] * mag)
+            bin = quantize_orientation(theta, bins) - 1
+            hist[bin] += weight
         
-        maxBin = [np.argmax(hist)]
-        maxBinVal = hist[maxBin[0]]
+        maxBin = np.argmax(hist)
+        maxBinVal = np.max(hist)
+        binWidth = 360//bins
 
-        if maxBinVal == 0:
-            return maxBin
+        kp.setDir(int(fit_parabola(hist, maxBin, binWidth)))
 
         # checking if exist other valeus above 80% of the max
-        for k in range(len(hist)):
-            if k == maxBin[0]:
+        for binno, k in enumerate(hist):
+            if binno == maxBin:
                 continue
-            if hist[k] >= .8*maxBinVal:
-                maxBin.append(k)
+            if k >= .8 * maxBinVal:
+                nkp = handleKeypoints.KeyPoint(kp.x, kp.y, kp.scale, int(fit_parabola(hist, binno, binWidth)))
+                auxList.append(nkp)
         
-        return maxBin
+    return auxList
 
 
 ##### main #####
@@ -75,7 +93,8 @@ fileName = sys.argv[3]
 # read image and passing to gray scale
 img = cv2.imread(imgPath, cv2.IMREAD_UNCHANGED)
 imgCopy = img[:]
-img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+if len(img.shape) > 2:
+    img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
 # gaussian filter input img
 img = cv2.GaussianBlur(img, (5, 5), 1.5)
@@ -86,20 +105,17 @@ keypoints = handleKeypoints.KeyPointList(path, fileName)
 # calculating orientation for keypoints in list of keypoints 
 auxList = []
 for kp in keypoints.List:
-    directions = calcOrientation(img, kp)
-    kp.setDir(directions[0])
+    auxList = calcOrientation(img, kp)
 
-    px = int(30*(np.cos(np.radians(kp.dir*10))))
-    py = int(30*(np.sin(np.radians(kp.dir*10))))
+    px = int(30*(np.cos(np.radians(kp.dir))))
+    py = int(30*(np.sin(np.radians(kp.dir))))
     
     #print (kp.dir*10, ':', (kp.x + px, kp.y + py), (kp.x, kp.y))
     cv2.arrowedLine(imgCopy, (kp.x, kp.y), (kp.x + px, kp.y + py), (0, 0, 255), 1)
-    
-    directions.pop(0)
-    if len(directions) > 0:
-        for d in directions:
-            nkp = handleKeypoints.KeyPoint(kp.x, kp.y, kp.scale, d)
-            auxList.append(nkp)
+    for point in auxList:
+        px = int(30*(np.cos(np.radians(point.dir))))
+        py = int(30*(np.sin(np.radians(point.dir))))
+        cv2.arrowedLine(imgCopy, (point.x, point.y), (point.x + px, point.y + py), (0, 0, 255), 1)
 
 # passando os novos KP para a lista final
 for newKp in auxList:

@@ -5,6 +5,7 @@ import numpy as np
 import math
 
 from numpy import linalg as LA
+from utils import gaussian_filter, cart_to_polar_grad, get_grad, quantize_orientation
 
 # consts values
 bins = 8
@@ -13,6 +14,51 @@ radius_c = 3 * sigma_c
 
 # Feature Vector Final List
 featVectorList = []
+
+def get_patch_grads(p):
+    r1 = np.zeros_like(p)
+    r1[-1] = p[-1]
+    r1[:-1] = p[1:]
+
+    r2 = np.zeros_like(p)
+    r2[0] = p[0]
+    r2[1:] = p[:-1]
+
+    dy = r1-r2
+
+    r1[:,-1] = p[:,-1]
+    r1[:,:-1] = p[:,1:]
+
+    r2[:,0] = p[:,0]
+    r2[:,1:] = p[:,:-1]
+
+    dx = r1-r2
+
+    return dx, dy
+
+def get_histogram_for_subregion(m, theta, num_bin, reference_angle, bin_width, subregion_w):
+    hist = np.zeros(num_bin, dtype=np.float32)
+    c = subregion_w/2 - .5
+
+    for i, (mag, angle) in enumerate(zip(m, theta)):
+        angle = (angle-reference_angle) % 360
+        binno = quantize_orientation(angle, num_bin)
+        vote = mag
+
+        # binno*bin_width is the start angle of the histogram bin
+        # binno*bin_width+bin_width/2 is the center of the histogram bin
+        # angle - " is the distance from the angle to the center of the bin 
+        hist_interp_weight = 1 - abs(angle - (binno*bin_width + bin_width/2))/(bin_width/2)
+        vote *= max(hist_interp_weight, 1e-6)
+
+        gy, gx = np.unravel_index(i, (subregion_w, subregion_w))
+        x_interp_weight = max(1 - abs(gx - c)/c, 1e-6)
+        y_interp_weight = max(1 - abs(gy - c)/c, 1e-6)
+        vote *= x_interp_weight * y_interp_weight
+
+        hist[binno] += vote
+
+    return hist
 
 # params: angle in rads, x, y, orige x, orige y, answer axis(0==x,1==y)
 def rotateP(o, x, y, ox, oy, ansA):
@@ -23,13 +69,6 @@ def rotateP(o, x, y, ox, oy, ansA):
         ans = (x * math.sin(o) + y * math.cos(o)) + oy
 
     return int(round(ans))
-
-# params: sigma, high of kernel window
-def gaussianKernel(sigma, h):
-    base = np.ones((h, h, 1))
-    kernel = cv2.getGaussianKernel(h, sigma)
-    kernel = np.dot(kernel, kernel.transpose())
-    return kernel
 
 # checking if is out of bounds for gradient calc
 def isOut(img, x, y):
@@ -51,13 +90,13 @@ f.close()
 imgPath = sys.argv[2]
 
 img = cv2.imread(imgPath, cv2.IMREAD_UNCHANGED)
-img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+if len(img.shape) > 2:
+    img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
 binWidth = int(360/bins)
 
 windowSize = 16
 sigma = windowSize/6
-kernel = gaussianKernel(sigma, windowSize)
 radius = int(windowSize/2)
 
 toRadVal = 180.0/np.pi
@@ -66,76 +105,67 @@ hist = [[np.zeros(bins, dtype=np.float32) for _ in range(4)] for _ in range(4)]
 
 for kp in kpList:
     i = 0
-    kpDir = kp.dir*10
+    cx, cy, s = kp.x, kp.y, kp.scale
+    kpDir = kp.dir
     theta = kpDir * np.pi/180.0
+    kernel = gaussian_filter(windowSize/6)
 
-    for h in range(-radius, radius):
-        y = kp.y + h
-        oy = y - kp.y
-        j = 0
-        for w in range(-radius, radius):
-            x = kp.x + w
-            ox = x - kp.x
+    t, l = max(0, cy-windowSize//2), max(0, cx-windowSize//2)
+    b, r = min(img.shape[0], cy+windowSize//2+1), min(img.shape[1], cx+windowSize//2+1)
+    patch = img[t:b, l:r]
 
-            # rotating KP mask 6% of error in rotated mask
-            xR = rotateP(theta, ox, oy, kp.x, kp.y, 0)
-            yR = rotateP(theta, ox, oy, kp.x, kp.y, 1)
-            xA1 = rotateP(theta, ox+1, oy, kp.x, kp.y, 0)
-            xS1 = rotateP(theta, ox-1, oy, kp.x, kp.y, 0)
-            yA1 = rotateP(theta, ox, oy+1, kp.x, kp.y, 1)
-            yS1 = rotateP(theta, ox, oy-1, kp.x, kp.y, 1)
+    dx, dy = get_patch_grads(patch)
 
-            if isOut(img, xR, yR):
-                continue
+    if dx.shape[0] < windowSize+1:
+        if t == 0: kernel = kernel[kernel.shape[0]-dx.shape[0]:]
+        else: kernel = kernel[:dx.shape[0]]
+    if dx.shape[1] < windowSize+1:
+        if l == 0: kernel = kernel[kernel.shape[1]-dx.shape[1]:]
+        else: kernel = kernel[:dx.shape[1]]
 
-            dx = int(img[yR, xA1]) - int(img[yR, xS1])
-            dy = int(img[yA1, xR]) - int(img[yS1, xR])
+    if dy.shape[0] < windowSize+1:
+        if t == 0: kernel = kernel[kernel.shape[0]-dy.shape[0]:]
+        else: kernel = kernel[:dy.shape[0]]
+    if dy.shape[1] < windowSize+1:
+        if l == 0: kernel = kernel[kernel.shape[1]-dy.shape[1]:]
+        else: kernel = kernel[:dy.shape[1]]
 
-            mag = np.sqrt(dx*dx + dy*dy)
-            
-            # rotating single direction
-            angleRotated = (((np.arctan2(dy, dx)+np.pi) * toRadVal) - kpDir) % 360 
-            
-            binno =  int(angleRotated/binWidth)
-
-            #histInterp = max(1.0 - abs(orientation - (binno*binWidth + binWidth/2))/(binWidth/2), 1e-6)
-
-            vote = mag #* histInterp
-            
-            #subReg = windowSize/4
-            
-            if int(i/4) >= 4:
-                print ('i:',int(i/4))
-            
-            if int(j/4) >= 4:
-                print ('j:',int(i/4))
-
-            if binno >= 8 or binno < 0:
-                print ('binno:',binno)
-            
-            hist[int(i/4)][int(j/4)][binno] += (kernel[i, j] * vote)
+    m, theta = cart_to_polar_grad(dx, dy)
     
-            j = j+1
-        i = i+1
+    if len(kernel) == 17:
+        dx = dx.dot(kernel)
+        dy = dy.dot(kernel)
     
-    featVector = np.zeros(bins * windowSize + 2, dtype=np.float32)        
-    hist = np.array(hist)
-    featVector[2:] = hist.flatten()
+    subregion_w = windowSize//4
+    featvec = np.zeros(bins * windowSize, dtype=np.float32)
     
-    featVector /= max(1e-6, LA.norm(featVector))
-    featVector[featVector>0.2] = 0.2
-    featVector /= max(1e-6, LA.norm(featVector))
+    for i in range(0, subregion_w):
+        for j in range(0, subregion_w):
+            t, l = i*subregion_w, j*subregion_w
+            b, r = min(img.shape[0], (i+1)*subregion_w), min(img.shape[1], (j+1)*subregion_w)
 
-    featVector[0] = kp.x
-    featVector[1] = kp.y
+            hist = get_histogram_for_subregion(m[t:b, l:r].ravel(), 
+                                            theta[t:b, l:r].ravel(), 
+                                            bins, 
+                                            s, 
+                                            binWidth,
+                                            subregion_w)
+            featvec[i*subregion_w*bins + j*bins : i * subregion_w * bins + (j+1)* bins] = hist.flatten()
 
-    featVectorList.append(featVector)
+    featvec /= max(1e-6, LA.norm(featvec))
+    featvec[featvec>0.2] = 0.2
+    featvec /= max(1e-6, LA.norm(featvec))
+    featVectorList.append(featvec)
 
 ind = imgPath.rfind('/') + 1
 fileName = imgPath[ind:]
 with open(fileName+'.feats', 'w') as f:
+    i = 0
     for vec in featVectorList:
-        out = str(vec).replace('\n', ' ')
+        out = str(kpList[i].x) +" "+ str(kpList[i].y)
+        i+=1
+        out = out +' '+str(vec).replace('\n', ' ')
+        #print (out)
         out = out.replace('[', '').replace(']', '')
         f.write(out+"\n")
 
