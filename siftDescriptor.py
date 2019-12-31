@@ -118,13 +118,16 @@ for kp in kpList:
             j = j+1
         i = i+1
     
-    featVector = np.zeros(bins * windowSize, dtype=np.float32)        
+    featVector = np.zeros(bins * windowSize + 2, dtype=np.float32)        
     hist = np.array(hist)
-    featVector[:] = hist.flatten()
+    featVector[2:] = hist.flatten()
     
     featVector /= max(1e-6, LA.norm(featVector))
     featVector[featVector>0.2] = 0.2
     featVector /= max(1e-6, LA.norm(featVector))
+
+    featVector[0] = kp.x
+    featVector[1] = kp.y
 
     featVectorList.append(featVector)
 
@@ -132,6 +135,12 @@ ind = imgPath.rfind('/') + 1
 fileName = imgPath[ind:]
 with open(fileName+'.feats', 'w') as f:
     for vec in featVectorList:
-        f.write(str(vec)+"\n")
+        out = str(vec).replace('\n', ' ')
+        out = out.replace('[', '').replace(']', '')
+        f.write(out+"\n")
 
 print ("fim")
+
+## file output format: 
+## Each line has a vector descriptor been the first and second position of vector the x and y KP 
+## position, respectivly.
