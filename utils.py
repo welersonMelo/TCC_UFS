@@ -11,8 +11,8 @@ def gaussian_filter(sigma):
 	return g/g.sum()
 
 def cart_to_polar_grad(dx, dy):
-    m = np.sqrt(dx**2 + dy**2)
-    theta = (np.arctan2(dy, dx)+np.pi) * 180/np.pi
+    m = np.sqrt(dx*dx + dy*dy)
+    theta = ((np.arctan2(dy, dx)+np.pi) * 180/np.pi) - 90
     return m, theta
 
 def get_grad(L, x, y):

@@ -59,29 +59,30 @@ def calcOrientation(img, kp):
             mag, theta = get_grad(img, x, y)            
             weight = kernel[i+radius, j+radius] * mag
             
-            bin = quantize_orientation(theta, bins) - 1
-            hist[bin] += weight
+            binn = quantize_orientation(theta, bins) - 1
+            hist[binn] += weight
         
-        maxBin = np.argmax(hist)
-        maxBinVal = np.max(hist)
-        binWidth = 360//bins
+    maxBin = np.argmax(hist)
+    maxBinVal = np.max(hist)
 
-        kp.setDir(int(fit_parabola(hist, maxBin, binWidth)))
+    kp.setDir(maxBin*10)
 
-        # checking if exist other valeus above 80% of the max
-        for binno, k in enumerate(hist):
-            if binno == maxBin:
-                continue
-            if k >= .8 * maxBinVal:
-                nkp = handleKeypoints.KeyPoint(kp.x, kp.y, kp.scale, int(fit_parabola(hist, binno, binWidth)))
-                auxList.append(nkp)
+    # checking if exist other valeus above 80% of the max
+    #print ('->', hist)
+
+    for binno, k in enumerate(hist):
+        if binno == maxBin:
+            continue
+        if k > .85 * maxBinVal:
+            nkp = handleKeypoints.KeyPoint(kp.x, kp.y, kp.scale, binno*10)
+            auxList.append(nkp)
         
     return auxList
 
 
 ##### main #####
 # Ex call:
-# python siftKPOrientation.py ../TestImages/dirtest.jpg ../TestImages/dirtest.manual
+# python siftKPOrientation.py ../TestImages/dirtest.jpg ../TestImages/ dirtest.manual
 imgPath = sys.argv[1]
 path = sys.argv[2] 
 fileName = sys.argv[3]
@@ -103,6 +104,7 @@ img = cv2.GaussianBlur(img, (5, 5), 1.5)
 keypoints = handleKeypoints.KeyPointList(path, fileName)
 
 # calculating orientation for keypoints in list of keypoints 
+newKpAssigned = []
 auxList = []
 for kp in keypoints.List:
     auxList = calcOrientation(img, kp)
@@ -116,9 +118,10 @@ for kp in keypoints.List:
         px = int(30*(np.cos(np.radians(point.dir))))
         py = int(30*(np.sin(np.radians(point.dir))))
         cv2.arrowedLine(imgCopy, (point.x, point.y), (point.x + px, point.y + py), (0, 0, 255), 1)
+    newKpAssigned += auxList
 
 # passando os novos KP para a lista final
-for newKp in auxList:
+for newKp in newKpAssigned:
     keypoints.List.append(newKp)
 
 cv2.imwrite('kpOrientation.jpg', imgCopy)
